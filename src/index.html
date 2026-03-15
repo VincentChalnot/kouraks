@@ -1128,15 +1128,20 @@ serviceTypeLabels:
         },
 
         // ── Yield calculation ────────────────────────────────────
+        // Returns the best (max) yieldMultiplier for each required service type.
+        // 0 means the type is unsatisfied (no service assigned or all crashed).
+        bestMultipliersPerType(leaf, services) {
+          return leaf.requires.map(type => {
+            const ofType = services.filter(s => s.serviceType === type);
+            return ofType.length ? Math.max(...ofType.map(s => s.yieldMultiplier)) : 0;
+          });
+        },
         computeLeafYield(leaf) {
           const hwMult = this.hardwareConfig.multiplier;
           const assigned = this.ownedServices.filter(s => s.assignedTo === leaf.id);
-          const allTypesSatisfied = leaf.requires.every(type =>
-            assigned.some(s => s.serviceType === type && s.status !== 'crashed')
-          );
-          if (!allTypesSatisfied) return 0;
-          const mults = assigned.map(s => s.yieldMultiplier);
-          return leaf.baseYield * hwMult * (mults.length ? Math.min(...mults) : 1.0);
+          const bestMults = this.bestMultipliersPerType(leaf, assigned);
+          if (bestMults.some(m => m === 0)) return 0;
+          return leaf.baseYield * hwMult * Math.min(...bestMults);
         },
         computeTotalRate() {
           return this.config.leaves
@@ -1150,9 +1155,14 @@ serviceTypeLabels:
         },
         reqStatus(leaf, reqType) {
           const assigned = this.ownedServices.filter(s => s.assignedTo === leaf.id);
-          const match = assigned.find(s => s.serviceType === reqType);
-          if (!match) return { icon: '❓', label: 'manque' };
-          return { icon: this.statusIcon(match.status), label: match.name };
+          const ofType = assigned.filter(s => s.serviceType === reqType);
+          if (!ofType.length) return { icon: '❓', label: 'manque' };
+          // Show the best-status service of this type (green > degraded > crashed)
+          const best = ofType.reduce(
+            (a, b) => b.yieldMultiplier > a.yieldMultiplier ? b : a,
+            ofType[0]
+          );
+          return { icon: this.statusIcon(best.status), label: best.name };
         },
         toggleDetail(leafId) {
           // Spread into new object to ensure Alpine detects the change
@@ -1260,15 +1270,14 @@ serviceTypeLabels:
           const leaf = this.config.leaves.find(l => l.id === projectId);
           if (!leaf) return 0;
           const hwMult = this.hardwareConfig.multiplier;
-          const existingAssigned = this.ownedServices.filter(s => s.assignedTo === projectId);
-          // Simulate adding this service (only serviceType, status, yieldMultiplier are needed for yield computation)
-          const simulated = [...existingAssigned, { serviceType: svcCfg.serviceType, status: 'green', yieldMultiplier: 1.0 }];
-          const allSatisfied = leaf.requires.every(type =>
-            simulated.some(s => s.serviceType === type && s.status !== 'crashed')
-          );
-          if (!allSatisfied) return 0;
-          const mults = simulated.map(s => s.yieldMultiplier);
-          return leaf.baseYield * hwMult * (mults.length ? Math.min(...mults) : 1.0);
+          // Simulate adding the new service (only serviceType and yieldMultiplier are needed)
+          const simulated = [
+            ...this.ownedServices.filter(s => s.assignedTo === projectId),
+            { serviceType: svcCfg.serviceType, yieldMultiplier: 1.0 },
+          ];
+          const bestMults = this.bestMultipliersPerType(leaf, simulated);
+          if (bestMults.some(m => m === 0)) return 0;
+          return leaf.baseYield * hwMult * Math.min(...bestMults);
         },
         restartService(uid) {
           const svc = this.ownedServices.find(s => s.uid === uid);
