@@ -1,18 +1,20 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KOURAKS</title>
+
+  <!-- js-yaml must load synchronously before the game script parses YAML -->
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+  <!-- Alpine.js deferred so inline scripts can register Alpine.data first -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <!-- Pico.css classless variant — styles native HTML elements, no class changes needed -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
+
   <style>
-    /* ── Reset & Base ──────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: #0d1117;
-      color: #c9d1d9;
-      min-height: 100vh;
-    }
+    /* Hide elements marked x-cloak until Alpine initialises */
+    [x-cloak] { display: none !important; }
 
     /* ── Header / Kouraks Counter ──────────────────────────────── */
     .header {
@@ -267,7 +269,7 @@
 
     /* ── Shop Modal ────────────────────────────────────────────── */
     .modal-overlay {
-      display: none;
+      display: flex;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.7);
@@ -416,68 +418,755 @@
     }
   </style>
 </head>
-<body>
+<body x-data="game">
 
   <!-- Header -->
   <div class="header">
     <span class="header-title">🖥 KOURAKS</span>
     <div class="kouraks-display">
-      <span id="kouraks-count">0 K</span>
-      <span id="kouraks-rate">(+0 K/s)</span>
+      <span id="kouraks-count" x-text="fmt(kouraks) + ' K'">0 K</span>
+      <span id="kouraks-rate" x-text="'(+' + fmt(rate) + ' K/s)'"></span>
     </div>
     <div class="hardware-info">
-      Hardware : <strong id="hardware-name">Vieux Dell Reconditionnée</strong>
-      <span id="hardware-mult">×1.0</span>
-      <button id="hardware-upgrade-btn" onclick="upgradeHardware(); renderUI();">Upgrader</button>
+      Hardware : <strong x-text="hardwareConfig.name"></strong>
+      <span id="hardware-mult" x-text="'×' + hardwareConfig.multiplier"></span>
+      <button id="hardware-upgrade-btn"
+              x-show="nextHardware"
+              :disabled="kouraks < (nextHardware ? nextHardware.cost : Infinity)"
+              @click="upgradeHardware()"
+              x-text="nextHardware ? 'Upgrader → ' + nextHardware.name + ' (' + fmt(nextHardware.cost) + ' K)' : ''">
+      </button>
     </div>
   </div>
 
   <!-- Main Panels -->
   <div class="main">
+
     <!-- Projects Panel -->
     <div class="panel">
       <div class="panel-title">Projets en prod</div>
-      <div id="projects-list"></div>
+      <div id="projects-list">
+        <template x-for="leaf in config.leaves" :key="leaf.id">
+          <div class="project-card" :class="totalEarned < leaf.unlockAt ? 'locked' : ''">
+
+            <!-- Locked state -->
+            <div class="project-header" x-show="totalEarned < leaf.unlockAt">
+              <span class="project-name">🔒 ???</span>
+              <span class="project-yield" x-text="'Débloqué à ' + fmt(leaf.unlockAt) + ' K'"></span>
+            </div>
+
+            <!-- Unlocked state -->
+            <div x-show="totalEarned >= leaf.unlockAt">
+              <div class="project-header" @click="toggleDetail(leaf.id)">
+                <span class="project-name" x-text="leaf.name"></span>
+                <span class="project-yield" x-text="fmt(computeLeafYield(leaf)) + ' K/s'"></span>
+              </div>
+              <div class="project-reqs">
+                <template x-for="reqType in leaf.requires" :key="reqType">
+                  <span class="req-badge"
+                        :title="typeLabel(reqType) + ': ' + reqStatus(leaf, reqType).label"
+                        x-text="reqStatus(leaf, reqType).icon + ' ' + typeLabel(reqType)">
+                  </span>
+                </template>
+              </div>
+              <div class="project-desc" x-text="leaf.description"></div>
+              <div class="project-detail" x-show="openDetails[leaf.id]">
+                <div class="detail-title">Services assignés :</div>
+                <div class="detail-empty" x-show="leafAssigned(leaf).length === 0">Aucun service assigné.</div>
+                <template x-for="svc in leafAssigned(leaf)" :key="svc.uid">
+                  <div class="assigned-service">
+                    <span x-text="statusIcon(svc.status) + ' ' + svc.name"></span>
+                    <span class="service-type-badge" x-text="typeLabel(svc.serviceType)"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+          </div>
+        </template>
+      </div>
     </div>
 
     <!-- Services Panel -->
     <div class="panel">
       <div class="panel-title">Services disponibles</div>
-      <div id="services-list"></div>
-      <button class="btn btn-shop" onclick="openShop();">🛒 Acheter un service</button>
+      <div id="services-list">
+        <div class="empty-message" x-show="ownedServices.length === 0">Aucun service. Achetez-en dans la boutique.</div>
+        <template x-for="svc in ownedServices" :key="svc.uid">
+          <div class="service-card" :class="'status-' + svc.status">
+            <div class="service-header">
+              <span x-text="statusIcon(svc.status)"></span>
+              <span class="service-name" x-text="svc.name"></span>
+              <span class="service-type-badge" x-text="typeLabel(svc.serviceType)"></span>
+            </div>
+            <div class="service-assignment">
+              <label>Assigner à :
+                <select x-model="svc.assignedTo">
+                  <option value="">— Non assigné —</option>
+                  <template x-for="leaf in unlockedLeaves" :key="leaf.id">
+                    <option :value="leaf.id" x-text="leaf.name"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+            <div class="service-info">
+              <span class="assigned-to"
+                    x-text="svc.assignedTo ? (config.leaves.find(l => l.id === svc.assignedTo) || {name: ''}).name : 'Non assigné'">
+              </span>
+              <button class="btn btn-restart"
+                      x-show="svc.status === 'crashed'"
+                      @click="restartService(svc.uid)">Redémarrer</button>
+              <span class="restart-timer"
+                    x-show="svc.status === 'degraded'"
+                    x-text="'Redémarrage… ' + svc.restartTimer + 's'"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+      <button class="btn btn-shop" @click="shopOpen = true">🛒 Acheter un service</button>
     </div>
+
   </div>
 
   <!-- Event Log -->
   <div class="log-panel">
     <div class="panel-title">Log système</div>
-    <div id="log-list"></div>
+    <div id="log-list">
+      <template x-for="entry in eventLog.slice(0, 20)" :key="entry._id">
+        <div class="log-entry" x-text="'[' + entry.time + '] ' + entry.message"></div>
+      </template>
+    </div>
   </div>
 
   <!-- Footer -->
   <div class="footer">
     <span>KOURAKS — Infrastructure absurde depuis 2019</span>
-    <button class="btn btn-reset" onclick="confirmReset();">Réinitialiser</button>
+    <button class="btn btn-reset" @click="confirmReset()">Réinitialiser</button>
   </div>
 
-  <!-- Shop Modal -->
-  <div class="modal-overlay" id="shop-modal">
+  <!-- Shop Modal — x-cloak prevents flash before Alpine initialises -->
+  <div class="modal-overlay" x-show="shopOpen" x-cloak @click.self="shopOpen = false">
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">🛒 Boutique de services</span>
-        <button class="modal-close" onclick="closeShop();">✕</button>
+        <button class="modal-close" @click="shopOpen = false">✕</button>
       </div>
-      <div id="shop-content"></div>
+      <div id="shop-content">
+        <template x-for="group in shopGroups" :key="group.type">
+          <div class="shop-group">
+            <h3 class="shop-group-title" x-text="typeLabel(group.type)"></h3>
+            <template x-for="svc in group.services" :key="svc.id">
+              <div class="shop-item"
+                   :class="totalEarned < svc.unlockAt ? 'locked' : (kouraks < svc.buyCost ? 'too-expensive' : '')">
+                <!-- Locked -->
+                <div x-show="totalEarned < svc.unlockAt">
+                  <div class="shop-item-name" x-text="'🔒 ' + svc.name"></div>
+                  <div class="shop-item-info" x-text="'Débloqué à ' + fmt(svc.unlockAt) + ' K total'"></div>
+                </div>
+                <!-- Unlocked -->
+                <div x-show="totalEarned >= svc.unlockAt">
+                  <div class="shop-item-name" x-text="svc.name"></div>
+                  <div class="shop-item-desc" x-text="svc.description"></div>
+                  <div class="shop-item-info">
+                    <span class="shop-cost" x-text="fmt(svc.buyCost) + ' K'"></span>
+                    <button class="btn btn-buy"
+                            :disabled="kouraks < svc.buyCost"
+                            @click="buyService(svc.id)">Acheter</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script src="data.js"></script>
-  <script src="game.js"></script>
-  <script src="ui.js"></script>
+  <!-- ── Game data as inline YAML ─────────────────────────────────────────── -->
+  <script type="text/yaml" id="game-data">
+hardware:
+  - level: 1
+    name: "Vieux Delleau Reconditionné"
+    cost: 0
+    multiplier: 1.0
+  - level: 2
+    name: "Serveur Marmolaye 2U"
+    cost: 500
+    multiplier: 1.5
+  - level: 3
+    name: "Rack Glandesque 42U"
+    cost: 2500
+    multiplier: 2.5
+  - level: 4
+    name: "Cluster Talgoya"
+    cost: 12000
+    multiplier: 5.0
+  - level: 5
+    name: "Datacenter Akwéneau Piscine"
+    cost: 80000
+    multiplier: 12.0
+  - level: 6
+    name: "Infrastructure KK Souveraine"
+    cost: 500000
+    multiplier: 30.0
+
+services:
+  # Backends
+  - id: gras-js
+    name: "GRAs.js"
+    serviceType: backend
+    description: "Un framework. Personne ne sait pourquoi il tourne."
+    buyCost: 0
+    crashRate: 0.003
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 0
+  - id: groblochon-js
+    name: "GROBLOCHON.JS"
+    serviceType: backend
+    description: "Un framework plus gros. Personne ne sait pourquoi il existe."
+    buyCost: 800
+    crashRate: 0.002
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 2000
+  - id: fromage-worker
+    name: "FromAge Worker"
+    serviceType: backend
+    description: "Un worker. Il travaille. Parfois."
+    buyCost: 3500
+    crashRate: 0.004
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 15000
+
+  # Databases
+  - id: moisql
+    name: "MoïSQL 3.0"
+    serviceType: database
+    description: "Une base de données. Les données sont dedans. Normalement."
+    buyCost: 0
+    crashRate: 0.002
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 0
+  - id: chocolat-db
+    name: "chocolatRequestDatabase"
+    serviceType: database
+    description: "Une base de données au chocolat. Personne ne sait ce que ça veut dire."
+    buyCost: 1200
+    crashRate: 0.001
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 5000
+
+  # Message queues
+  - id: roquefort-cluster
+    name: "Roquefort Cluster"
+    serviceType: message-queue
+    description: "Un cluster de messages. Ça sent le roquefort."
+    buyCost: 600
+    crashRate: 0.005
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 1000
+  - id: napping-queue
+    name: "Napping Queue"
+    serviceType: message-queue
+    description: "Une queue de messages. Elle fait la sieste."
+    buyCost: 2000
+    crashRate: 0.003
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 8000
+
+  # Caches
+  - id: vieux-dis
+    name: "VieuxDis"
+    serviceType: cache
+    description: "Un cache. Il oublie parfois."
+    buyCost: 150
+    crashRate: 0.004
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 0
+  - id: rate-limiter
+    name: "Rate Limiter Talgoya"
+    serviceType: cache
+    description: "Un cache qui limite. Quoi exactement. On ne sait pas."
+    buyCost: 900
+    crashRate: 0.002
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 3000
+
+  # Reverse proxies
+  - id: petit-wrap
+    name: "Petit Wrap"
+    serviceType: reverse-proxy
+    description: "Un reverse proxy. Petit mais costaud. Enfin, petit."
+    buyCost: 300
+    crashRate: 0.002
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 500
+  - id: inverse-proxi
+    name: "InverseProxi"
+    serviceType: reverse-proxy
+    description: "Un proxy inversé. Ou un inverse proxié. On ne sait plus."
+    buyCost: 1800
+    crashRate: 0.001
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 10000
+
+  # Search engines
+  - id: champ-talgoya
+    name: "Champ Talgoya"
+    serviceType: search
+    description: "Un moteur de recherche. Il cherche. Il ne trouve pas toujours."
+    buyCost: 400
+    crashRate: 0.003
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 800
+  - id: elastibeurre
+    name: "ElastiBeurre"
+    serviceType: search
+    description: "Un moteur de recherche au beurre. Indexation lente mais onctueuse."
+    buyCost: 2500
+    crashRate: 0.002
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 20000
+
+  # IAM
+  - id: noisetier-api
+    name: "Noisetier API v2"
+    serviceType: iam
+    description: "Une API d'authentification. La v1 a été perdue."
+    buyCost: 700
+    crashRate: 0.002
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 2500
+  - id: kitkat-merger
+    name: "Cluster KitKat Merger"
+    serviceType: iam
+    description: "Un cluster d'identité. Personne ne sait qui est qui."
+    buyCost: 4000
+    crashRate: 0.001
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 30000
+
+  # Bundlers
+  - id: raclette-bundle
+    name: "Raclette Bundle v3"
+    serviceType: bundler
+    description: "Un bundler. La v1 et la v2 sont en prod aussi."
+    buyCost: 250
+    crashRate: 0.006
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 400
+  - id: chantilly-deco
+    name: "Chantilly Décorator v1.2-dev#alpha"
+    serviceType: bundler
+    description: "Un bundler en alpha. Depuis 3 ans."
+    buyCost: 1500
+    crashRate: 0.008
+    restartDuration: 8
+    autoRestart: false
+    unlockAt: 6000
+
+leaves:
+  # unlockAt: 0 — requires only services with unlockAt: 0 (gras-js, moisql)
+  - id: synchro-allopneus
+    name: "Synchro AlloPneumz"
+    isLeaf: true
+    requires:
+      - database
+      - backend
+    baseYield: 15
+    unlockAt: 0
+    description: "Synchronise des données. Vers où. Depuis quoi. On sait plus."
+
+  # unlockAt: 800 — search (Champ Talgoya) available at unlockAt: 800 ✓
+  - id: champ-akeneobl
+    name: "Champ Akwéneau Piscine VIII de Blé"
+    isLeaf: true
+    requires:
+      - database
+      - search
+    baseYield: 30
+    unlockAt: 800
+    description: "Un champ. Dans un PIM. Pour une piscine. C'est en prod depuis 2019."
+
+  # unlockAt: 3000 — iam (Noisetier API) available at unlockAt: 2500 ✓
+  - id: migration-kk
+    name: "Migration KK"
+    isLeaf: true
+    requires:
+      - database
+      - backend
+      - iam
+    baseYield: 55
+    unlockAt: 3000
+    description: "La migration est prévue depuis 2021. Elle est toujours en cours. Le budget est reconduit."
+
+  # unlockAt: 8000 — message-queue at 1000, cache at 0 ✓
+  - id: projet-talgoya
+    name: "Projet Talgoya"
+    isLeaf: true
+    requires:
+      - backend
+      - message-queue
+      - cache
+    baseYield: 80
+    unlockAt: 8000
+    description: "Personne dans l'entreprise ne peut expliquer ce que c'est. Personne n'ose demander."
+
+  # unlockAt: 20000 — bundler at 400 ✓
+  - id: dashboard-codir
+    name: "Dashboard Stratégique CODIR"
+    isLeaf: true
+    requires:
+      - backend
+      - database
+      - bundler
+    baseYield: 120
+    unlockAt: 20000
+    description: "Un dashboard que le CODIR regarde une fois par trimestre et qu'il ne comprend pas."
+
+  # unlockAt: 60000 — iam at 2500, reverse-proxy at 500 ✓
+  - id: cookie-factory
+    name: "Cookie Factory"
+    isLeaf: true
+    requires:
+      - backend
+      - database
+      - iam
+      - reverse-proxy
+    baseYield: 200
+    unlockAt: 60000
+    description: "Génère des cookies. Lesquels. Pourquoi. Le ticket Djira est fermé."
+
+  # unlockAt: 150000 — bundler at 400, search at 800 ✓
+  - id: glanduju
+    name: "Glanduju.js"
+    isLeaf: true
+    requires:
+      - backend
+      - bundler
+      - cache
+      - search
+    baseYield: 350
+    unlockAt: 150000
+    description: "Le projet le plus important de l'entreprise selon la roadmap Q3 2022."
+
+crashMessages:
+  - "{name} a crashé. Personne n'a vu venir."
+  - "{name} est tombé. Le monitoring n'a rien dit."
+  - "{name} s'est arrêté. Comme chaque lundi."
+  - "{name} a rencontré une erreur inattendue. Comme prévu."
+  - "{name} crash. Ticket ouvert. Priorité: basse."
+  - "FATAL: {name}. Bonne chance."
+  - "{name} a décidé de prendre une pause."
+
+restartMessages:
+  - "{name} redémarre. Ça va le faire."
+  - "{name} est de retour. Pour l'instant."
+  - "{name} répond à nouveau. Ne pas trop compter dessus."
+
+milestones:
+  - threshold: 14
+    message: "14 Kouraks ! Tout le monde s'éclate !"
+  - threshold: 1000
+    message: "1 000 Kouraks. Le CODIR est content. Il ne sait pas pourquoi."
+  - threshold: 10000
+    message: "10 000 Kouraks. Un consultant va bientôt arriver."
+  - threshold: 100000
+    message: "100 000 Kouraks. On parle de réécrire tout ça en microservices."
+  - threshold: 1000000
+    message: "1 000 000 Kouraks. C'était mieux avant."
+
+serviceTypeLabels:
+  backend: "Backend"
+  database: "Base de données"
+  message-queue: "Message Queue"
+  cache: "Cache"
+  reverse-proxy: "Reverse Proxy"
+  search: "Recherche"
+  iam: "IAM"
+  bundler: "Bundler"
+  </script>
+
+  <!-- ── Game engine as Alpine.js component ───────────────────────────────── -->
   <script>
-    // Start the game when the page loads
-    window.addEventListener('DOMContentLoaded', startGame);
+    // Parse YAML config at startup — GAME_CONFIG is available globally
+    const GAME_CONFIG = jsyaml.load(document.getElementById('game-data').textContent);
+
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('game', () => ({
+        // ── State ────────────────────────────────────────────────
+        config: GAME_CONFIG,
+        kouraks: 500,
+        totalEarned: 0,
+        hardwareLevel: 1,
+        ownedServices: [],
+        eventLog: [],
+        nextUid: 1,
+        _logCounter: 0,
+        milestonesReached: [],
+        shopOpen: false,
+        // Pre-initialise all leaf detail toggles to false
+        openDetails: Object.fromEntries(GAME_CONFIG.leaves.map(l => [l.id, false])),
+
+        // ── Lifecycle ────────────────────────────────────────────
+        init() {
+          const loaded = this.loadGame();
+          if (!loaded) {
+            this.addLog("Bienvenue. Le système est opérationnel. Pour l'instant.");
+          }
+          setInterval(() => this.gameTick(), 1000);
+          setInterval(() => this.saveGame(), 30000);
+        },
+
+        // ── Computed getters ─────────────────────────────────────
+        get hardwareConfig() {
+          return this.config.hardware.find(h => h.level === this.hardwareLevel)
+              || this.config.hardware[0];
+        },
+        get nextHardware() {
+          return this.config.hardware.find(h => h.level === this.hardwareLevel + 1) || null;
+        },
+        get rate() {
+          return this.computeTotalRate();
+        },
+        get unlockedLeaves() {
+          return this.config.leaves.filter(l => this.totalEarned >= l.unlockAt);
+        },
+        get shopGroups() {
+          const groups = {};
+          for (const svc of this.config.services) {
+            if (!groups[svc.serviceType]) groups[svc.serviceType] = [];
+            groups[svc.serviceType].push(svc);
+          }
+          return Object.entries(groups).map(([type, services]) => ({ type, services }));
+        },
+
+        // ── Formatting helpers ───────────────────────────────────
+        fmt(value) {
+          return Math.floor(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        },
+        statusIcon(status) {
+          return { green: '🟢', degraded: '🟡', crashed: '🔴' }[status] || '❓';
+        },
+        typeLabel(type) {
+          return this.config.serviceTypeLabels[type] || type;
+        },
+
+        // ── Yield calculation ────────────────────────────────────
+        computeLeafYield(leaf) {
+          const hwMult = this.hardwareConfig.multiplier;
+          const assigned = this.ownedServices.filter(s => s.assignedTo === leaf.id);
+          const allTypesSatisfied = leaf.requires.every(type =>
+            assigned.some(s => s.serviceType === type && s.status !== 'crashed')
+          );
+          if (!allTypesSatisfied) return 0;
+          const mults = assigned.map(s => s.yieldMultiplier);
+          return leaf.baseYield * hwMult * (mults.length ? Math.min(...mults) : 1.0);
+        },
+        computeTotalRate() {
+          return this.config.leaves
+            .filter(l => this.totalEarned >= l.unlockAt)
+            .reduce((sum, l) => sum + this.computeLeafYield(l), 0);
+        },
+
+        // ── Template helpers ─────────────────────────────────────
+        leafAssigned(leaf) {
+          return this.ownedServices.filter(s => s.assignedTo === leaf.id);
+        },
+        reqStatus(leaf, reqType) {
+          const assigned = this.ownedServices.filter(s => s.assignedTo === leaf.id);
+          const match = assigned.find(s => s.serviceType === reqType);
+          if (!match) return { icon: '❓', label: 'manque' };
+          return { icon: this.statusIcon(match.status), label: match.name };
+        },
+        toggleDetail(leafId) {
+          // Spread into new object to ensure Alpine detects the change
+          this.openDetails = { ...this.openDetails, [leafId]: !this.openDetails[leafId] };
+        },
+
+        // ── Game tick ────────────────────────────────────────────
+        gameTick() {
+          this.processCrashes();
+          const r = this.computeTotalRate();
+          this.kouraks += r;
+          this.totalEarned += r;
+          this.checkMilestones();
+          // Alpine reactivity handles DOM updates automatically — no renderUI() call needed
+        },
+
+        // ── Crash logic ──────────────────────────────────────────
+        processCrashes() {
+          for (const svc of this.ownedServices) {
+            if (svc.status === 'green') {
+              if (Math.random() < svc.crashRate) {
+                svc.status = 'crashed';
+                svc.yieldMultiplier = 0.0;
+                this.addLog(this.randomPick(this.config.crashMessages).replace('{name}', svc.name));
+                if (svc.autoRestart) {
+                  svc.status = 'degraded';
+                  svc.yieldMultiplier = 0.5;
+                  svc.restartTimer = svc.restartDuration;
+                  this.addLog(this.randomPick(this.config.restartMessages).replace('{name}', svc.name));
+                }
+              }
+            } else if (svc.status === 'degraded') {
+              svc.restartTimer--;
+              if (svc.restartTimer <= 0) {
+                svc.status = 'green';
+                svc.yieldMultiplier = 1.0;
+                svc.restartTimer = 0;
+              }
+            }
+          }
+        },
+
+        // ── Milestones ───────────────────────────────────────────
+        checkMilestones() {
+          for (const m of this.config.milestones) {
+            if (this.totalEarned >= m.threshold && !this.milestonesReached.includes(m.threshold)) {
+              this.milestonesReached.push(m.threshold);
+              this.showMilestone(m.message);
+              this.addLog('🏆 ' + m.message);
+            }
+          }
+        },
+        showMilestone(message) {
+          const popup = document.createElement('div');
+          popup.className = 'milestone-popup';
+          popup.textContent = message;
+          document.body.appendChild(popup);
+          requestAnimationFrame(() => popup.classList.add('show'));
+          setTimeout(() => {
+            popup.classList.remove('show');
+            setTimeout(() => popup.remove(), 500);
+          }, 4000);
+        },
+
+        // ── Service management ───────────────────────────────────
+        buyService(configId) {
+          const cfg = this.config.services.find(s => s.id === configId);
+          if (!cfg || this.kouraks < cfg.buyCost || this.totalEarned < cfg.unlockAt) return;
+          this.kouraks -= cfg.buyCost;
+          this.ownedServices.push({
+            uid: this.nextUid++,
+            configId: cfg.id,
+            name: cfg.name,
+            serviceType: cfg.serviceType,
+            crashRate: cfg.crashRate,
+            restartDuration: cfg.restartDuration,
+            autoRestart: cfg.autoRestart,
+            status: 'green',
+            assignedTo: '',   // empty string = unassigned; works with x-model on <select>
+            yieldMultiplier: 1.0,
+            restartTimer: 0,
+          });
+          this.addLog(cfg.name + ' acheté et déployé.');
+        },
+        restartService(uid) {
+          const svc = this.ownedServices.find(s => s.uid === uid);
+          if (!svc || svc.status !== 'crashed') return;
+          svc.status = 'degraded';
+          svc.yieldMultiplier = 0.5;
+          svc.restartTimer = svc.restartDuration;
+          this.addLog(this.randomPick(this.config.restartMessages).replace('{name}', svc.name));
+        },
+
+        // ── Hardware ─────────────────────────────────────────────
+        upgradeHardware() {
+          const next = this.nextHardware;
+          if (!next || this.kouraks < next.cost) return;
+          this.kouraks -= next.cost;
+          this.hardwareLevel = next.level;
+          this.addLog('Hardware amélioré : ' + next.name + ' (×' + next.multiplier + ')');
+        },
+
+        // ── Event log ────────────────────────────────────────────
+        addLog(message) {
+          const now = new Date();
+          const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
+            .map(n => String(n).padStart(2, '0')).join(':');
+          this.eventLog.unshift({ _id: this._logCounter++, time, message });
+          if (this.eventLog.length > 100) this.eventLog.length = 100;
+        },
+
+        // ── Utilities ────────────────────────────────────────────
+        randomPick(arr) {
+          return arr[Math.floor(Math.random() * arr.length)];
+        },
+
+        // ── Persistence ──────────────────────────────────────────
+        saveGame() {
+          try {
+            localStorage.setItem('kouraks-save', JSON.stringify({
+              kouraks: this.kouraks,
+              totalEarned: this.totalEarned,
+              hardwareLevel: this.hardwareLevel,
+              ownedServices: this.ownedServices,
+              nextUid: this.nextUid,
+              milestonesReached: this.milestonesReached,
+              eventLog: this.eventLog.slice(0, 50),
+            }));
+          } catch (e) {
+            // Silently fail if localStorage is unavailable
+          }
+        },
+        loadGame() {
+          try {
+            const raw = localStorage.getItem('kouraks-save');
+            if (!raw) return false;
+            const d = JSON.parse(raw);
+            this.kouraks = d.kouraks ?? 0;
+            this.totalEarned = d.totalEarned ?? 0;
+            this.hardwareLevel = d.hardwareLevel ?? 1;
+            // Normalise legacy null assignedTo values to '' for x-model compatibility
+            this.ownedServices = (d.ownedServices || []).map(svc => ({
+              ...svc,
+              assignedTo: svc.assignedTo || '',
+            }));
+            this.nextUid = d.nextUid ?? 1;
+            this.milestonesReached = d.milestonesReached || [];
+            const entries = d.eventLog || [];
+            this.eventLog = entries.map((e, i) => ({ _id: i, ...e }));
+            this._logCounter = entries.length;
+            this.addLog('Sauvegarde chargée. Reprise en cours.');
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+        confirmReset() {
+          if (confirm('Réinitialiser la partie ? Toute la progression sera perdue.')) {
+            localStorage.removeItem('kouraks-save');
+            this.kouraks = 0;
+            this.totalEarned = 0;
+            this.hardwareLevel = 1;
+            this.ownedServices = [];
+            this.nextUid = 1;
+            this._logCounter = 0;
+            this.milestonesReached = [];
+            this.eventLog = [];
+            this.openDetails = Object.fromEntries(this.config.leaves.map(l => [l.id, false]));
+            this.addLog('Système réinitialisé. Bonne chance.');
+          }
+        },
+
+      }));
+    });
   </script>
 
 </body>
