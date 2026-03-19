@@ -110,9 +110,10 @@ document.addEventListener("alpine:init", () => {
 		},
 
 		initializeProjects() {
+			let projectInstances = [...this.state.projectInstances];
 			this.config.projects.forEach((project) => {
 				if (Engine.isUnlocked(project, this.state, this.config)) {
-					const existingInstance = this.state.projectInstances.find(
+					const existingInstance = projectInstances.find(
 						(p) => p.projectId === project.id,
 					);
 					if (!existingInstance) {
@@ -121,17 +122,21 @@ document.addEventListener("alpine:init", () => {
 							this.state,
 							project,
 						);
-						this.state.projectInstances.push({
-							projectId: project.id,
-							currentVersionId: activeVersion?.id || null,
-							strikes: 0,
-							currentProduction: 0,
-							productionHistory: [],
-						});
+						projectInstances = [
+							...projectInstances,
+							{
+								projectId: project.id,
+								currentVersionId: activeVersion?.id || null,
+								strikes: 0,
+								currentProduction: 0,
+								productionHistory: [],
+							},
+						];
 						this.log("info", `Project initialized: ${project.name}`);
 					}
 				}
 			});
+			this.state = { ...this.state, projectInstances };
 		},
 
 		// === CONVENIENCE ACCESSORS (proxied from state for templates) ===
@@ -215,12 +220,6 @@ document.addEventListener("alpine:init", () => {
 			if (this.state.gameOver) {
 				clearInterval(this.tickInterval);
 				this.log("error", "=== GAME OVER ===");
-				this.state = Engine.processTick(
-					this.state,
-					{ ...this.config },
-					0,
-					Math.random,
-				);
 				this.checkMailsForDisplay();
 			}
 		},

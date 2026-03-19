@@ -693,6 +693,10 @@ function processTick(state, config, deltaSeconds, rng) {
 			(s.elapsedSeconds % trimesterDuration) / trimesterDuration;
 		if (trimesterProgress < deltaSeconds / trimesterDuration + 0.001) {
 			s = checkTrimesterKPIs(s, config);
+			// Re-run unlocks if game over was just triggered (creates game-over mail)
+			if (s.gameOver && !state.gameOver) {
+				s = checkUnlocks(s, config);
+			}
 		}
 	}
 
@@ -1071,6 +1075,7 @@ function checkTrimesterKPIs(state, config) {
 	let gameOver = state.gameOver;
 	if (projectFailures >= gameOverLimit) {
 		gameOver = true;
+		firedEventIds = fireEvent(firedEventIds, "game_over_projects");
 	}
 
 	return {
