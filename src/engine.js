@@ -119,9 +119,9 @@ function getCurrentProjectVersion(config, state, projInstance) {
 }
 
 function isServiceBlockedByHardware(state, svcInstance) {
-	if (!svcInstance.assignedHardwareId) return false;
+	if (!svcInstance.hardwareInstanceId) return false;
 	const hwInstance = state.hardwareInstances.find(
-		(h) => h.id === svcInstance.assignedHardwareId,
+		(h) => h.id === svcInstance.hardwareInstanceId,
 	);
 	if (!hwInstance) return false;
 	return hwInstance.status !== "running";
@@ -130,12 +130,12 @@ function isServiceBlockedByHardware(state, svcInstance) {
 function isServiceAwaitingHardware(config, svcInstance) {
 	const version = findServiceVersion(config, svcInstance.serviceVersionId);
 	if (!version) return false;
-	return !!version.requireHardware && !svcInstance.assignedHardwareId;
+	return !!version.requireHardware && !svcInstance.hardwareInstanceId;
 }
 
 function getServicesOnHardware(state, hardwareInstanceId) {
 	return state.serviceInstances.filter(
-		(svc) => svc.assignedHardwareId === hardwareInstanceId,
+		(svc) => svc.hardwareInstanceId === hardwareInstanceId,
 	);
 }
 
@@ -149,7 +149,7 @@ function checkProjectRequirements(state, config, projInstance, version) {
 			return (
 				svc.status === "running" &&
 				service?.type === reqType &&
-				(svc.assignedProjectId === projInstance.projectId || service?.global)
+				(svc.projectInstanceId === projInstance.projectId || service?.global)
 			);
 		});
 		if (!hasService) return false;
@@ -161,7 +161,7 @@ function checkProjectRequirements(state, config, projInstance, version) {
 			return (
 				svc.status === "running" &&
 				svc.serviceVersionId === reqId &&
-				(svc.assignedProjectId === projInstance.projectId || service?.global)
+				(svc.projectInstanceId === projInstance.projectId || service?.global)
 			);
 		});
 		if (!hasService) return false;
@@ -186,9 +186,9 @@ function computeYieldDetails(state, config) {
 			const multipliers = [];
 
 			// Hardware multiplier
-			if (svc.assignedHardwareId) {
+			if (svc.hardwareInstanceId) {
 				const hwInstance = state.hardwareInstances.find(
-					(h) => h.id === svc.assignedHardwareId,
+					(h) => h.id === svc.hardwareInstanceId,
 				);
 				if (hwInstance?.status === "running") {
 					const hw = findHardware(config, hwInstance.hardwareId);
@@ -197,11 +197,11 @@ function computeYieldDetails(state, config) {
 			}
 
 			// Service multipliers from same project (including self)
-			if (svc.assignedProjectId) {
+			if (svc.projectInstanceId) {
 				for (const otherSvc of state.serviceInstances) {
 					if (
 						otherSvc.status === "running" &&
-						otherSvc.assignedProjectId === svc.assignedProjectId
+						otherSvc.projectInstanceId === svc.projectInstanceId
 					) {
 						const otherVersion = findServiceVersion(
 							config,
@@ -265,7 +265,7 @@ function computeYieldDetails(state, config) {
 			const projectServices = state.serviceInstances.filter(
 				(svc) =>
 					svc.status === "running" &&
-					(svc.assignedProjectId === projInstance.projectId ||
+					(svc.projectInstanceId === projInstance.projectId ||
 						findService(config, svc.serviceId)?.global),
 			);
 
@@ -445,8 +445,8 @@ function applyHardwareSell(state, config, action) {
 
 	// Stop and unassign all services on this hardware
 	const serviceInstances = state.serviceInstances.map((svc) => {
-		if (svc.assignedHardwareId === instance.id) {
-			return { ...svc, status: "stopped", assignedHardwareId: null };
+		if (svc.hardwareInstanceId === instance.id) {
+			return { ...svc, status: "stopped", hardwareInstanceId: null };
 		}
 		return svc;
 	});
@@ -482,8 +482,8 @@ function applyServiceDeploy(state, config, action) {
 				serviceId: service.id,
 				serviceVersionId: version.id,
 				status: "deploying",
-				assignedProjectId: action.projectId || null,
-				assignedHardwareId: action.hardwareId || null,
+				projectInstanceId: action.projectId || null,
+				hardwareInstanceId: action.hardwareId || null,
 				remainingRestartTime: 0,
 				remainingDeployTime: version.deployTime,
 				currentProduction: 0,
@@ -509,16 +509,16 @@ function applyServiceConfigure(state, config, action) {
 
 	const hardwareChanged =
 		action.hardwareInstanceId !== undefined &&
-		action.hardwareInstanceId !== instance.assignedHardwareId;
+		action.hardwareInstanceId !== instance.hardwareInstanceId;
 
 	if (hardwareChanged) {
-		updated.assignedHardwareId = action.hardwareInstanceId || null;
+		updated.hardwareInstanceId = action.hardwareInstanceId || null;
 		updated.status = "deploying";
 		updated.remainingDeployTime = version?.deployTime || 0;
 	}
 
 	if (action.projectId !== undefined) {
-		updated.assignedProjectId = action.projectId || null;
+		updated.projectInstanceId = action.projectId || null;
 	}
 
 	const serviceInstances = [...state.serviceInstances];
@@ -773,7 +773,7 @@ function advanceTimers(state, config, deltaSeconds) {
 				const service = findService(config, svc.serviceId);
 				const version = findServiceVersion(config, svc.serviceVersionId);
 				// If non-global service has no project assigned, stop it
-				if (!service?.global && !svc.assignedProjectId) {
+				if (!service?.global && !svc.projectInstanceId) {
 					return { ...svc, status: "stopped", remainingDeployTime: 0 };
 				}
 				firedEventIds = fireEvent(firedEventIds, version?.deployEventId);
@@ -787,7 +787,7 @@ function advanceTimers(state, config, deltaSeconds) {
 			if (remaining <= 0) {
 				const service = findService(config, svc.serviceId);
 				const version = findServiceVersion(config, svc.serviceVersionId);
-				if (!service?.global && !svc.assignedProjectId) {
+				if (!service?.global && !svc.projectInstanceId) {
 					return { ...svc, status: "stopped", remainingRestartTime: 0 };
 				}
 				firedEventIds = fireEvent(firedEventIds, version?.restartEventId);
@@ -803,9 +803,9 @@ function advanceTimers(state, config, deltaSeconds) {
 }
 
 function isServiceBlockedByHardwareWith(svcInstance, hardwareInstances) {
-	if (!svcInstance.assignedHardwareId) return false;
+	if (!svcInstance.hardwareInstanceId) return false;
 	const hwInstance = hardwareInstances.find(
-		(h) => h.id === svcInstance.assignedHardwareId,
+		(h) => h.id === svcInstance.hardwareInstanceId,
 	);
 	if (!hwInstance) return false;
 	return hwInstance.status !== "running";
@@ -946,7 +946,7 @@ function applyYield(state, config, deltaSeconds) {
 	const hardwareInstances = state.hardwareInstances.map((hwInstance) => {
 		if (hwInstance.status !== "running") return hwInstance;
 		const servicesOnHw = serviceInstances.filter(
-			(svc) => svc.assignedHardwareId === hwInstance.id,
+			(svc) => svc.hardwareInstanceId === hwInstance.id,
 		);
 		let hwProduction = 0;
 		for (const svc of servicesOnHw) {
@@ -1059,8 +1059,8 @@ function checkTrimesterKPIs(state, config) {
 				projectFailures++;
 
 				serviceInstances = serviceInstances.map((svc) => {
-					if (svc.assignedProjectId === projInstance.projectId) {
-						return { ...svc, assignedProjectId: null };
+					if (svc.projectInstanceId === projInstance.projectId) {
+						return { ...svc, projectInstanceId: null };
 					}
 					return svc;
 				});

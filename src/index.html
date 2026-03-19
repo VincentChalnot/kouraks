@@ -187,14 +187,14 @@
                                 <div><strong>Yield:</strong> <span
                                         x-text="formatNumber(getServiceVersion(svcInstance.serviceVersionId).baseYield || 0) + ' K/s'"></span>
                                 </div>
-                                <template x-if="svcInstance.assignedHardwareId">
+                                <template x-if="svcInstance.hardwareInstanceId">
                                     <div><strong>Hardware:</strong>
-                                        <span x-text="getHardware(svcInstance.assignedHardwareId).name || 'Non trouvé'"></span>
+                                        <span x-text="getHardwareByInstance(svcInstance.hardwareInstanceId).name || 'Non trouvé'"></span>
                                     </div>
                                 </template>
-                                <template x-if="svcInstance.assignedProjectId">
+                                <template x-if="svcInstance.projectInstanceId">
                                     <div><strong>Projet:</strong> <span
-                                            x-text="getProject(svcInstance.assignedProjectId).name"></span></div>
+                                            x-text="getProject(svcInstance.projectInstanceId).name"></span></div>
                                 </template>
                             </div>
 

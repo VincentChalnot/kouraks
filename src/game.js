@@ -392,8 +392,8 @@ document.addEventListener("alpine:init", () => {
 			this.selectedServiceConfig = {
 				service: service,
 				version: version,
-				hardwareId: svcInstance.assignedHardwareId,
-				projectId: svcInstance.assignedProjectId,
+				hardwareId: svcInstance.hardwareInstanceId,
+				projectId: svcInstance.projectInstanceId,
 				existingInstance: svcInstance,
 			};
 			this.showServiceConfig = true;
@@ -424,6 +424,13 @@ document.addEventListener("alpine:init", () => {
 		// === CONFIG LOOKUP HELPERS (delegate to engine) ===
 		getHardware(id) {
 			return Engine.findHardware(this.config, id) || {};
+		},
+
+		getHardwareByInstance(id) {
+			// Look for hardware instance in this.state.hardwareInstances and call getHardware with the actual hardware id
+			const hwInstance = this.hardwareInstances.find((hw) => hw.id === id);
+			if (!hwInstance) return;
+			return this.getHardware(hwInstance.hardwareId);
 		},
 
 		getService(id) {
@@ -489,7 +496,7 @@ document.addEventListener("alpine:init", () => {
 			const services = this.serviceInstances.filter(
 				(svc) =>
 					svc.status === "running" &&
-					svc.assignedProjectId === projInstance.projectId,
+					svc.projectInstanceId === projInstance.projectId,
 			);
 			if (services.length === 0) return 0;
 
@@ -535,7 +542,7 @@ document.addEventListener("alpine:init", () => {
 				const service = this.getService(svc.serviceId);
 				return (
 					service.type === reqType &&
-					(svc.assignedProjectId === projInstance.projectId || service.global)
+					(svc.projectInstanceId === projInstance.projectId || service.global)
 				);
 			});
 

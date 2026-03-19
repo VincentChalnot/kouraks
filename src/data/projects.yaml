@@ -15,16 +15,21 @@ projects:
     versions:
       - id: site-vitrine-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 0
-        eventId: site-vitrine-v1-launched
-        targetProduction: 1800  # ~5 K/s minimum sur 360s
+        targetProduction: 100  # Quelques secondes après le lancement initial
         serviceTypeRequirements: ['backend']
+        serviceRequirements: []
+
+      - id: site-vitrine-v1.1
+        name: "v1.1"
+        unlockAtTrimester: 0.5
+        eventId: site-vitrine-v11-launched
+        targetProduction: 500  # Trafic qui augmente, besoin de monitoring
+        serviceTypeRequirements: ['backend', 'monitoring']
         serviceRequirements: []
 
       - id: site-vitrine-v1.5
         name: "v1.5"
-        version: "v1.5"
         unlockAtTrimester: 1.5
         eventId: site-vitrine-v15-launched
         targetProduction: 3600  # ~10 K/s, besoin d'upgrade hardware
@@ -42,7 +47,6 @@ projects:
     versions:
       - id: forum-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 1.5
         eventId: forum-v1-launched
         targetProduction: 4500  # Besoin backend + database
@@ -51,7 +55,6 @@ projects:
 
       - id: forum-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 3.5
         eventId: forum-v2-launched
         targetProduction: 12000  # Migration forcée, + storage
@@ -69,7 +72,6 @@ projects:
     versions:
       - id: ecommerce-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 2.5
         eventId: ecommerce-v1-launched
         targetProduction: 18000  # Stack complète
@@ -78,7 +80,6 @@ projects:
 
       - id: ecommerce-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 5.0
         eventId: ecommerce-v2-launched
         targetProduction: 45000  # + cache obligatoire
@@ -96,7 +97,6 @@ projects:
     versions:
       - id: saas-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 4.0
         eventId: saas-v1-launched
         targetProduction: 35000  # Architecture moderne
@@ -105,7 +105,6 @@ projects:
 
       - id: saas-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 6.5
         eventId: saas-v2-launched
         targetProduction: 90000  # + message queue
@@ -123,7 +122,6 @@ projects:
     versions:
       - id: api-mobile-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 5.5
         eventId: api-mobile-v1-launched
         targetProduction: 75000
@@ -132,7 +130,6 @@ projects:
 
       - id: api-mobile-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 8.0
         eventId: api-mobile-v2-launched
         targetProduction: 180000  # + search engine
@@ -150,7 +147,6 @@ projects:
     versions:
       - id: streaming-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 7.0
         eventId: streaming-v1-launched
         targetProduction: 150000  # Très gourmand
@@ -159,7 +155,6 @@ projects:
 
       - id: streaming-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 9.5
         eventId: streaming-v2-launched
         targetProduction: 350000  # Microservices + orchestration
@@ -177,7 +172,6 @@ projects:
     versions:
       - id: fintech-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 8.5
         eventId: fintech-v1-launched
         targetProduction: 280000  # Haute disponibilité requise
@@ -186,7 +180,6 @@ projects:
 
       - id: fintech-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 11.0
         eventId: fintech-v2-launched
         targetProduction: 600000  # + service mesh
@@ -204,7 +197,6 @@ projects:
     versions:
       - id: iot-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 10.0
         eventId: iot-v1-launched
         targetProduction: 500000  # Gros volume de données
@@ -213,7 +205,6 @@ projects:
 
       - id: iot-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 12.5
         eventId: iot-v2-launched
         targetProduction: 1000000  # Time series DB
@@ -231,7 +222,6 @@ projects:
     versions:
       - id: social-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 11.5
         eventId: social-v1-launched
         targetProduction: 850000  # Très scalable
@@ -240,7 +230,6 @@ projects:
 
       - id: social-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 14.0
         eventId: social-v2-launched
         targetProduction: 1800000  # Full stack moderne
@@ -258,7 +247,6 @@ projects:
     versions:
       - id: aiml-v1
         name: "v1.0"
-        version: "v1.0"
         unlockAtTrimester: 13.0
         eventId: aiml-v1-launched
         targetProduction: 1500000  # Très gourmand en ressources
@@ -267,7 +255,6 @@ projects:
 
       - id: aiml-v2
         name: "v2.0"
-        version: "v2.0"
         unlockAtTrimester: 15.5
         eventId: aiml-v2-launched
         targetProduction: 3000000  # Endpoint
@@ -276,7 +263,6 @@ projects:
 
       - id: aiml-v3
         name: "v3.0 - RAG"
-        version: "v3.0"
         unlockAtTrimester: 17.5
         eventId: aiml-v3-launched
         targetProduction: 5000000  # Vector DB pour RAG

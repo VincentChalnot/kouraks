@@ -61,13 +61,15 @@ Représente une source de revenus de Kouraks.
 
 ### Project Version
 
-| Propriété                 | Type          | Description                                                        |
-|---------------------------|---------------|--------------------------------------------------------------------|
-| *Champs communs*          |               | Voir "Propriétés communes" ci-dessus                               |
-| `version`                 | string*       | Numéro ou nom (ex: `v1`, `v2.4`)                                   |
-| `targetProduction`        | int*          | Quantité de K à produire par trimestre pour survivre au KPI        |
-| `serviceTypeRequirements` | array[string] | Liste des types de services requis (ex: `['database', 'backend']`) |
-| `serviceRequirements`     | array[string] | Liste d'IDs stricts requis (rare, ex: `['OurSQL_v4']`)             |
+| Propriété                 | Type          | Description                                                            |
+|---------------------------|---------------|------------------------------------------------------------------------|
+| *Champs communs*          |               | Voir "Propriétés communes" ci-dessus                                   |
+| `targetProduction`        | int*          | Quantité de K à produire par trimestre pour survivre au KPI            |
+| `serviceTypeRequirements` | array[string] | Liste des types de services requis (ex: `['database', 'backend']`)     |
+| `serviceRequirements`     | array[string] | Liste d'IDs stricts requis (rare, ex: `['OurSQL_v4']`)                 |
+| `successEventId`          | string        | ID d'événement déclenché en cas de succès du KPI (production ≥ target) |
+
+Le champ `name` sert à stocker le numéro ou nom de version (ex: `v1`, `v2.4`, `buffalo`...)
 
 Un requirement peut être remplis par un service assigné au projet ou un service global. Un service global peut remplir
 les requirements de plusieurs projets à la fois.
@@ -136,8 +138,8 @@ Représente l'instance déployée d'une version de service, avec son état au ru
 | `serviceId`            | string*      | ID du service ciblé                                                                   |
 | `serviceVersionId`     | string*      | ID de la version de service déployée                                                  |
 | `status`               | string*      | État actuel de l'instance (voir ci-dessous)                                           |
-| `assignedProjectId`    | string       | ID du projet cible (null si global)                                                   |
-| `assignedHardwareId`   | string       | ID de l'instance hardware cible (null si pas de hardware requis)                      |
+| `projectInstanceId`    | string       | ID du projet cible (null si global)                                                   |
+| `hardwareInstanceId`   | string       | ID de l'instance hardware cible (null si pas de hardware requis)                      |
 | `remainingRestartTime` | float        | Temps restant avant de repasser en `running` après `restarting` ou `stopped`          |
 | `remainingDeployTime`  | float        | Temps restant avant de repasser en `running` après `deploying`                        |
 | `currentProduction`    | float*       | Défaut 0, sert à stocker la production temporaire en K entre deux **secondes** de jeu |
