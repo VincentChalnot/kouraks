@@ -743,7 +743,7 @@ document.addEventListener("alpine:init", () => {
 
 		loadGame() {
 			// Create initial state first
-			this.state = Engine.createInitialState(10000);
+			this.state = Engine.createInitialState(10);
 
 			const saved = localStorage.getItem("kourasks_save");
 			if (saved) {
@@ -751,7 +751,7 @@ document.addEventListener("alpine:init", () => {
 					const data = JSON.parse(saved);
 					this.state = {
 						...this.state,
-						kouraks: data.kouraks ?? 10000,
+						kouraks: data.kouraks ?? 10,
 						elapsedSeconds: data.elapsedSeconds ?? data.gameTime ?? 0,
 						projectFailures: data.projectFailures ?? 0,
 						hardwareInstances: data.hardwareInstances ?? [],
