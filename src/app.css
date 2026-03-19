@@ -162,6 +162,22 @@ section h2 {
 	animation: pulse-red 1s infinite;
 }
 
+.service-card.hardware-blocked {
+	opacity: 0.5;
+}
+
+.status-badges {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.hardware-error-badge {
+	background: var(--error-color);
+	color: white;
+}
+
 @keyframes pulse-red {
 	0%,
 	100% {

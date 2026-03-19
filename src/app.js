@@ -16,7 +16,7 @@ document.addEventListener("alpine:init", () => {
 		mailsConfig: [],
 
 		// === RUNTIME STATE ===
-		kouraks: 0,
+		kouraks: 10000,
 		currentNetYield: 0,
 		currentTrimester: 0,
 		projectFailures: 0,
@@ -151,6 +151,9 @@ document.addEventListener("alpine:init", () => {
 		},
 
 		tick() {
+			// Pause everything while a mail is open
+			if (this.showMail) return;
+
 			const deltaTime = this.TICK_INTERVAL / 1000; // Convert to seconds
 
 			// Update game time
@@ -224,26 +227,71 @@ document.addEventListener("alpine:init", () => {
 				}
 			});
 
-			// Service timers
+			// Service timers — hardware-blocked services are handled specially
 			this.serviceInstances.forEach((svc) => {
+				const blockedByHardware = this.isServiceBlockedByHardware(svc);
+				const awaitingHardware = this.isServiceAwaitingHardware(svc);
+
+				if (blockedByHardware) {
+					// If deploying: freeze the timer (do nothing)
+					// If any other non-stopped/non-deploying state: put into restarting
+					if (
+						svc.status !== "deploying" &&
+						svc.status !== "stopped" &&
+						svc.status !== "restarting"
+					) {
+						const version = this.getServiceVersion(svc.serviceVersionId);
+						svc.status = "restarting";
+						svc.remainingRestartTime = version.restartDuration;
+						this.log(
+							"warning",
+							`Service ${this.getService(svc.serviceId).name} restarting: hardware unavailable`,
+						);
+					}
+					// Do not decrement any timers for blocked services
+					return;
+				}
+
+				if (awaitingHardware) {
+					// Freeze the deploy timer — service stays deploying until hardware is assigned
+					return;
+				}
+
 				if (svc.status === "deploying" && svc.remainingDeployTime > 0) {
 					svc.remainingDeployTime -= deltaTime;
 					if (svc.remainingDeployTime <= 0) {
-						svc.status = "running";
-						this.log(
-							"info",
-							`Service ${this.getService(svc.serviceId).name} is now running`,
-						);
+						svc.remainingDeployTime = 0;
+						const service = this.getService(svc.serviceId);
+						if (!service.global && !svc.assignedProjectId) {
+							svc.status = "stopped";
+							this.log(
+								"warning",
+								`Service ${service.name} stopped: no project assigned`,
+							);
+						} else {
+							svc.status = "running";
+							this.log("info", `Service ${service.name} is now running`);
+						}
 					}
 				}
 				if (svc.status === "restarting" && svc.remainingRestartTime > 0) {
 					svc.remainingRestartTime -= deltaTime;
 					if (svc.remainingRestartTime <= 0) {
-						svc.status = "running";
-						this.log(
-							"info",
-							`Service ${this.getService(svc.serviceId).name} restarted successfully`,
-						);
+						svc.remainingRestartTime = 0;
+						const service = this.getService(svc.serviceId);
+						if (!service.global && !svc.assignedProjectId) {
+							svc.status = "stopped";
+							this.log(
+								"warning",
+								`Service ${service.name} stopped: no project assigned`,
+							);
+						} else {
+							svc.status = "running";
+							this.log(
+								"info",
+								`Service ${service.name} restarted successfully`,
+							);
+						}
 					}
 				}
 			});
@@ -621,7 +669,7 @@ document.addEventListener("alpine:init", () => {
 			const instance = {
 				id: this.generateId(),
 				hardwareId: hardware.id,
-				status: "stopped",
+				status: "deploying",
 				remainingDeployTime: hardware.deployTime,
 				remainingRestartTime: 0,
 				currentProduction: 0,
@@ -670,11 +718,10 @@ document.addEventListener("alpine:init", () => {
 		},
 
 		startHardware(hwInstance) {
-			hwInstance.status = "running";
-			this.log(
-				"info",
-				`Started hardware: ${this.getHardware(hwInstance.hardwareId).name}`,
-			);
+			const hw = this.getHardware(hwInstance.hardwareId);
+			hwInstance.status = "deploying";
+			hwInstance.remainingDeployTime = hw.deployTime;
+			this.log("info", `Deploying hardware: ${hw.name}`);
 		},
 
 		shutdownHardware(hwInstance) {
@@ -717,17 +764,23 @@ document.addEventListener("alpine:init", () => {
 			const config = this.selectedServiceConfig;
 			if (!config) return;
 
-			// Validation
-			if (config.version.requireHardware && !config.hardwareId) {
-				this.log("error", "Sélectionner un hardware!");
+			// If reconfiguring an existing instance: just update assignments
+			if (config.existingInstance) {
+				const svc = config.existingInstance;
+				svc.assignedHardwareId = config.version.requireHardware
+					? config.hardwareId || null
+					: null;
+				svc.assignedProjectId = config.service.global
+					? null
+					: config.projectId || null;
+				this.log("info", `Reconfigured service: ${config.service.name}`);
+				this.showServiceConfig = false;
+				this.selectedServiceConfig = null;
+				this.saveGame();
 				return;
 			}
 
-			if (!config.service.global && !config.projectId) {
-				this.log("error", "Sélectionner un projet!");
-				return;
-			}
-
+			// New deployment — only cost check is mandatory
 			if (this.kouraks < config.version.deployCost) {
 				this.log("error", "Pas assez de Kouraks!");
 				return;
@@ -740,10 +793,12 @@ document.addEventListener("alpine:init", () => {
 				id: this.generateId(),
 				serviceId: config.service.id,
 				serviceVersionId: config.version.id,
-				status: config.version.deployTime > 0 ? "deploying" : "running",
-				assignedProjectId: config.service.global ? null : config.projectId,
+				status: "deploying",
+				assignedProjectId: config.service.global
+					? null
+					: config.projectId || null,
 				assignedHardwareId: config.version.requireHardware
-					? config.hardwareId
+					? config.hardwareId || null
 					: null,
 				remainingRestartTime: 0,
 				remainingDeployTime: config.version.deployTime,
@@ -820,6 +875,11 @@ document.addEventListener("alpine:init", () => {
 		},
 
 		triggerEvent(eventId) {
+			if (eventId === "game_reset") {
+				localStorage.removeItem("kourasks_save");
+				location.reload();
+				return;
+			}
 			this.events.push({
 				eventId: eventId,
 				timestamp: this.gameTime,
@@ -830,12 +890,29 @@ document.addEventListener("alpine:init", () => {
 		gameOver() {
 			this.log("error", "=== GAME OVER ===");
 			clearInterval(this.tickInterval);
-			alert(
-				"GAME OVER: Trop de projets annulés. Le PDG vous remercie pour vos services.",
-			);
+			this.triggerEvent("game_over_projects");
+			// Show the mail immediately (checkMails runs in tick, which is now stopped)
+			this.checkMails();
 		},
 
 		// === HELPERS ===
+
+		// Returns true if this service is assigned to a hardware instance that is not running
+		isServiceBlockedByHardware(svcInstance) {
+			if (!svcInstance.assignedHardwareId) return false;
+			const hwInstance = this.hardwareInstances.find(
+				(h) => h.id === svcInstance.assignedHardwareId,
+			);
+			if (!hwInstance) return false;
+			return hwInstance.status !== "running";
+		},
+
+		// Returns true if this service requires hardware but has none assigned
+		isServiceAwaitingHardware(svcInstance) {
+			const version = this.getServiceVersion(svcInstance.serviceVersionId);
+			return !!version.requireHardware && !svcInstance.assignedHardwareId;
+		},
+
 		getHardware(id) {
 			return this.hardwareConfig.find((h) => h.id === id) || {};
 		},

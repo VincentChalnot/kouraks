@@ -162,10 +162,18 @@
                 </template>
 
                 <template x-for="svcInstance in serviceInstances" :key="svcInstance.id">
-                    <div class="service-card" :class="{'crashed': svcInstance.status === 'crashed'}">
+                    <div class="service-card" :class="{'crashed': svcInstance.status === 'crashed', 'hardware-blocked': isServiceBlockedByHardware(svcInstance) || isServiceAwaitingHardware(svcInstance)}">
                         <div class="card-header">
                             <h3 x-text="getService(svcInstance.serviceId).name"></h3>
-                            <span class="status-badge" :class="svcInstance.status" x-text="svcInstance.status"></span>
+                            <div class="status-badges">
+                                <span class="status-badge" :class="svcInstance.status" x-text="svcInstance.status"></span>
+                                <template x-if="isServiceBlockedByHardware(svcInstance)">
+                                    <span class="status-badge hardware-error-badge">HARDWARE ERROR</span>
+                                </template>
+                                <template x-if="isServiceAwaitingHardware(svcInstance)">
+                                    <span class="status-badge hardware-error-badge">NO HARDWARE</span>
+                                </template>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="service-info">
@@ -396,7 +404,7 @@
 
                 <footer>
                     <button @click="showServiceConfig = false" class="secondary">Annuler</button>
-                    <button @click="confirmServiceDeploy()">Déployer</button>
+                    <button @click="confirmServiceDeploy()" x-text="selectedServiceConfig.existingInstance ? 'Reconfigurer' : 'Déployer'"></button>
                 </footer>
             </div>
         </template>
@@ -469,20 +477,20 @@
 </dialog>
 
 <!-- Mail Modal -->
-<dialog :open="showMail" @click.self="() => {}">
+<dialog :open="showMail">
     <article x-show="currentMail">
         <header>
-            <h2 x-text="currentMail?.from || ''"></h2>
         </header>
 
         <template x-if="currentMail">
             <div class="mail-content">
+                <p><i x-text="currentMail?.from || ''"></i></p>
                 <h3 x-text="currentMail.name"></h3>
                 <p x-text="currentMail.description"></p>
 
                 <div class="mail-options">
                     <template x-for="option in currentMail.options" :key="option.id">
-                        <button @click="respondToMail(option)" x-text="option.name"></button>
+                        <button @click="respondToMail(option)" x-text="option.name" x-bind:title="option.description"></button>
                     </template>
                 </div>
             </div>

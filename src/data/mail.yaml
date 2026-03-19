@@ -10,7 +10,7 @@ mails:
   - id: mail-welcome
     name: "Bienvenue chez KouraTech"
     description: |
-      Bienvenue dans l'équipe infrastructure !
+      <p>Bienvenue dans l'équipe infrastructure !</p>
 
       Je suis ravi de vous compter parmi nous. Votre mission est simple : faire tourner notre site vitrine.
 
@@ -24,7 +24,7 @@ mails:
     options:
       - id: welcome-ok
         name: "Compris, je m'y mets"
-        description: "Accepter la mission et commencer"
+        description: "Ai-je vraiment le choix ?"
 
   - id: mail-site-v1-launched
     name: "Le site est en ligne !"
@@ -305,7 +305,10 @@ mails:
       CEO, KouraTech Industries
     from: "Jean-Michel Kouratec <jm@kouratech.com>"
     unlockAtEvent: zero_kouraks_3
-    options: []  # Pas d'options = game over modal bloquante
+    options:
+      - id: zero-gameover-lettre
+        name: "Ah d'accord, vous pouvez m'écrire une lettre de recommandation ?"
+        eventId: request_recommendation_letter
 
   # ==========================================
   # Mails de strikes
@@ -423,6 +426,30 @@ mails:
   # Mail de fin (victoire)
   # ==========================================
 
+  - id: mail-gameover-projects
+    name: "C'est terminé"
+    description: |
+      Trois projets annulés. TROIS.
+
+      J'ai pris une décision difficile. L'infrastructure sera externalisée.
+
+      J'ai signé un contrat avec une ESN. Offshore. Madagascar. 6 ingénieurs à 800€/mois chacun.
+
+      Ils commencent lundi. Votre dernier jour est vendredi.
+
+      Merci pour votre service. Les RH vous contacteront pour la procédure.
+
+      PS : Le site de ma fille est down depuis ce matin. Vous pouvez le réparer avant de partir ?
+
+      — Jean-Michel Kouratec
+      CEO, KouraTech Industries
+    from: "Jean-Michel Kouratec <jm@kouratech.com>"
+    unlockAtEvent: game_over_projects
+    options:
+      - id: projects-gameover-lettre
+        name: "Ah d'accord, vous pouvez m'écrire une lettre de recommandation ?"
+        eventId: request_recommendation_letter
+
   - id: mail-endgame-victory
     name: "🏆 Nous sommes arrivés au sommet"
     description: |
@@ -442,7 +469,27 @@ mails:
       Ex-CEO, KouraTech Industries (acquired)
     from: "Jean-Michel Kouratec <jm@kouratech.com>"
     unlockAtTrimester: 20.0
-    options: []  # Pas d'options = modal de victoire bloquante
+    options:
+      - id: victory-lettre
+        name: "Ah d'accord, vous pouvez m'écrire une lettre de recommandation ?"
+        eventId: request_recommendation_letter
+
+  - id: mail-recommendation-letter
+    name: "Merci d'avoir joué !"
+    description: |
+      J'espère que ce jeu vous a amusé et qu'il vous a laissé un goût amer en bouche.
+
+      La prochaine fois que vous travaillez sur une stack technique improbable, vous penserez à moi.
+
+      N'hésitez pas à partager ce jeu avec vos collègues.
+
+      — Vincent Chalnot
+    from: "Vincent Chalnot"
+    unlockAtEvent: request_recommendation_letter
+    options:
+      - id: reset-game
+        name: "Recommencer une nouvelle partie"
+        eventId: game_reset
 
 # Notes de conception:
 # - Mails liés aux événements via unlockAtEvent (eventId des projets)
