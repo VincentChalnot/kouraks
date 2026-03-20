@@ -624,7 +624,9 @@ function applyServiceRemove(state, _config, action) {
 
 function applyMailAnswer(state, config, action) {
 	const mailInstIdx = state.mailInstances.findIndex(
-		(m) => m.mailId === action.instanceId || m.mailId === action.mailId,
+		(m) =>
+			m.optionId == null &&
+			(m.mailId === action.instanceId || m.mailId === action.mailId),
 	);
 	if (mailInstIdx === -1) return state;
 
